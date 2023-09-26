@@ -74,8 +74,11 @@ df['input'] = df['input'].str[8:-6]
 df['labels'] = df['labels'].str[8:-6] 
 df.head()
 
-tokenizer = AutoTokenizer.from_pretrained("ApoTro/slovak-t5-small")
-model = AutoModelForSeq2SeqLM.from_pretrained("ApoTro/slovak-t5-small")
+tokenizer = AutoTokenizer.from_pretrained("sdadas/byt5-text-correction")
+model = AutoModelForSeq2SeqLM.from_pretrained("sdadas/byt5-text-correction")
+
+# tokenizer = AutoTokenizer.from_pretrained("ApoTro/slovak-t5-small")
+# model = AutoModelForSeq2SeqLM.from_pretrained("ApoTro/slovak-t5-small")
 
 def calc_token_len(example):
     return len(tokenizer(example).input_ids)
@@ -155,18 +158,42 @@ class GrammarDatasetWithLimitSkip(Dataset):
 
         return inputs
 
+def compute_classification_metrics(decoded_preds, decoded_labels):
+    TP, TN, FP, FN = 0, 0, 0, 0
+
+    for pred, label in zip(decoded_preds, decoded_labels):
+        pred_tokens = pred.split()
+        label_tokens = label.split()
+
+        for p_token, l_token in zip(pred_tokens, label_tokens):
+            if p_token == l_token:
+                if p_token == tokenizer.pad_token:  
+                    TN += 1
+                else:
+                    TP += 1
+            else:
+                if l_token == tokenizer.pad_token:  # Changed to check l_token instead of p_token
+                    FN += 1
+                else:
+                    FP += 1
+
+    return TP, TN, FP, FN
+
 def compute_metrics(eval_pred):
     predictions, labels = eval_pred
     
     decoded_preds = tokenizer.batch_decode(predictions, skip_special_tokens=True)
     
-    # Replace -100 in the labels as we can't decode them.
+    # Ensure that we don't consider the labels with value -100
     labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
     decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
-    
+
+   
     # Splitting for ROUGE
     decoded_preds_split = ["\n".join(nltk.sent_tokenize(pred.strip())) for pred in decoded_preds]
+    #decoded_labels_split = ["\n".join(nltk.sent_tokenize(label.strip())) for pred in decoded_labels]
     decoded_labels_split = ["\n".join(nltk.sent_tokenize(label.strip())) for label in decoded_labels]
+
 
     # Initialize RougeScorer object
     scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=True)
@@ -194,8 +221,25 @@ def compute_metrics(eval_pred):
     # Add mean generated length
     prediction_lens = [np.count_nonzero(pred != tokenizer.pad_token_id) for pred in predictions]
     result["gen_len"] = np.mean(prediction_lens)
-    
+
+    # Compute token-level metrics
+    TP, TN, FP, FN = compute_classification_metrics(decoded_preds, decoded_labels)
+    precision = TP / (TP + FP) if TP + FP != 0 else 0
+    recall = TP / (TP + FN) if TP + FN != 0 else 0
+    f1 = 2 * (precision * recall) / (precision + recall) if precision + recall != 0 else 0
+    f0_5 = (1 + 0.5**2) * (precision * recall) / (0.5**2 * precision + recall) if 0.5**2 * precision + recall != 0 else 0
+    i_measure = 2 * (precision * recall) / (precision + recall) - recall if precision + recall != 0 else 0
+
+    result.update({
+        "precision": precision * 100,
+        "recall": recall * 100,
+        "f1": f1 * 100,
+        "f0.5": f0_5 * 100,
+        "i_measure": i_measure * 100
+    })
+
     return {k: round(v, 4) for k, v in result.items()}
+
 
 
 class CustomLoggingCallback(TrainerCallback):
@@ -251,4 +295,4 @@ trainer = Seq2SeqTrainer(model=model,
 
 
 trainer.train()
-trainer.save_model('t5_gec_model_50000000')
+trainer.save_model('t5_gec_model_sdadas/byt5-text-correction_5000000')

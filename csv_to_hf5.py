@@ -28,17 +28,18 @@ def convert_tsv_to_hdf5(tsv_path, hdf5_path, percentage=1.0):
 
 def main():
     parser = argparse.ArgumentParser(description='Convert TSV file to HDF5 format.')
-    parser.add_argument('--percentage', type=float, nargs='?', default=1.0, help='Percentage of lines to convert (default: 1.0)')
     subparsers = parser.add_subparsers(help='possible subcommands', dest="subcommand")
     
     # create the parser for the "single" command
     parser_single = subparsers.add_parser('single', help='convert a single TSV file to HDF5 format')
     parser_single.add_argument('-i', '--input', type=str, help='Path to the TSV file')
     parser_single.add_argument('-o', '--output', type=str, help='Path to save the resulting HDF5 file')
+    parser_single.add_argument('--percentage', type=float, nargs='?', default=1.0, help='Percentage of lines to convert (default: 1.0)')
 
-    # create the parser for the "command_2" command
+    # create the parser for the "batch" command
     parser_batch = subparsers.add_parser('batch', help='convert a batch of TSV files to HDF5 format')
     parser_batch.add_argument('-i', '--input', type=str, help='Path to a set of TSV files to be processed')
+    parser_batch.add_argument('--percentage', type=float, nargs='?', default=1.0, help='Percentage of lines to convert (default: 1.0)')
 
     args = parser.parse_args()
 
